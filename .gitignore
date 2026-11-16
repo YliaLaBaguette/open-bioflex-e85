@@ -1,0 +1,16 @@
+# artefacts de build
+app/build/
+# clés de signature : jamais dans le dépôt (la clé des releases vit dans les secrets GitHub)
+*.keystore
+*.jks
+# Python
+__pycache__/
+*.pyc
+# APK : plus committé dans le dépôt, il est publié dans les Releases (voir .github/workflows/release.yml)
+apk/
+*.apk
+*.apks
+# outils / entrées volumineuses hors dépôt
+android-sdk/
+jdk-*/
+*.so

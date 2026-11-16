@@ -1,0 +1,107 @@
+# Construit l'APK (sans Gradle) et le publie dans une Release GitHub à chaque tag « vX.Y[.Z] ».
+# Pour sortir une version : `git tag v1.0.1 && git push origin v1.0.1`.
+# Signature : secrets SIGNING_KEYSTORE_B64 (keystore en base64) et SIGNING_KEYSTORE_PASSWORD.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:        # build de test manuel (artefact téléchargeable, sans publier de release)
+
+permissions:
+  contents: write           # nécessaire pour créer la release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Version depuis le tag
+        id: ver
+        shell: bash
+        run: |
+          # tag v1.0.1 -> versionName 1.0.1 ; versionCode = major*10000 + minor*100 + patch (toujours croissant)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            NAME="${GITHUB_REF_NAME#v}"
+            IFS=. read -r MA MI PA <<< "$NAME"
+            CODE=$(( 10#${MA:-0} * 10000 + 10#${MI:-0} * 100 + 10#${PA:-0} ))
+          else
+            NAME="0.0-dev"; CODE=1
+          fi
+          echo "name=$NAME"  >> "$GITHUB_OUTPUT"
+          echo "code=$CODE"  >> "$GITHUB_OUTPUT"
+          echo "Version $NAME (versionCode $CODE)"
+
+      - name: SDK (build-tools 34 + android-34)
+        shell: bash
+        run: |
+          # Souvent déjà présents sur le runner ; sinon on les installe.
+          if [ ! -x "$ANDROID_HOME/build-tools/34.0.0/aapt2" ] || [ ! -f "$ANDROID_HOME/platforms/android-34/android.jar" ]; then
+            SDKM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1); [ -n "$SDKM" ] || SDKM=sdkmanager
+            for i in $(seq 20); do echo y; done > /tmp/yes.txt
+            "$SDKM" --licenses < /tmp/yes.txt > /dev/null || true
+            "$SDKM" --install "build-tools;34.0.0" "platforms;android-34"
+          fi
+
+      - name: Build
+        shell: bash
+        env:
+          # Clé de signature privée, stockée dans les secrets du dépôt (jamais dans le code).
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          OUT=app/build; GEN=$OUT/gen
+          rm -rf "$OUT"; mkdir -p "$OUT/classes" "$GEN"
+          # Injecte la version du tag dans le manifeste (le dépôt garde ses valeurs par défaut)
+          sed -i -E 's/android:versionCode="[0-9]+"/android:versionCode="${{ steps.ver.outputs.code }}"/' app/AndroidManifest.xml
+          sed -i -E 's/android:versionName="[^"]*"/android:versionName="${{ steps.ver.outputs.name }}"/' app/AndroidManifest.xml
+          "$BT/aapt2" compile --dir app/res -o "$OUT/res.zip"
+          "$BT/aapt2" link -I "$JAR" --manifest app/AndroidManifest.xml --java "$GEN" \
+            --min-sdk-version 26 --target-sdk-version 34 -o "$OUT/base.apk" "$OUT/res.zip"
+          find app/src "$GEN" -name '*.java' > "$OUT/srcs.txt"
+          javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -classpath "$JAR" -d "$OUT/classes" @"$OUT/srcs.txt"
+          "$BT/d8" --min-api 26 --lib "$JAR" --output "$OUT" $(find "$OUT/classes" -name '*.class')
+          cp "$OUT/base.apk" "$OUT/unsigned.apk"
+          (cd "$OUT" && zip -q unsigned.apk classes.dex)
+          "$BT/zipalign" -f -p 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
+          # Signature : clé privée des secrets (constante -> MAJ en place possible).
+          # Sans secrets : une release échoue ; un build de test reçoit une clé jetable.
+          if [ -n "$KS_B64" ]; then
+            KS="$RUNNER_TEMP/release.jks"; ALIAS=openbioflex
+            echo "$KS_B64" | base64 -d > "$KS"
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "::error::Secrets de signature absents (SIGNING_KEYSTORE_B64 / SIGNING_KEYSTORE_PASSWORD)"; exit 1
+          else
+            KS="$RUNNER_TEMP/test.jks"; ALIAS=test; export KS_PASS=android
+            keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias test \
+              -keyalg RSA -keysize 2048 -validity 30 -dname "CN=Test" >/dev/null 2>&1
+          fi
+          APK="open-bioflex-e85-${{ steps.ver.outputs.name }}.apk"
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$ALIAS" --ks-pass env:KS_PASS --key-pass env:KS_PASS --out "$APK" "$OUT/aligned.apk"
+          rm -f "$KS"
+          "$BT/apksigner" verify "$APK"
+          "$BT/aapt2" dump badging "$APK" | head -1
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Artefact (build de test)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: ${{ env.APK }}
+
+      - name: Publier la release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK }}
+          generate_release_notes: true
