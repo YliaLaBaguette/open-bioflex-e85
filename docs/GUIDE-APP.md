@@ -44,6 +44,7 @@ accès internet.
 - Réglage du seuil de départ à froid, des enrichissements et de la consigne de démarrage
 - Chaque écriture vérifiée par l'écho du boîtier (✓ confirmé / ⚠ non confirmé)
 - Mode aperçu : le tableau de bord avec des données fictives, sans boîtier
+- Thème clair ou nuit, au choix (bouton ☾ / ☀ en haut à droite)
 
 **Avancé**
 - Journal complet exportable (trames hex/ASCII, écritures)
@@ -53,6 +54,8 @@ accès internet.
 <br clear="right">
 
 ## Installation et connexion
+
+<img src="img/ecran-selection.png" alt="Écran de sélection du boîtier" width="250" align="right">
 
 L'installation suit celle de toute application hors Play Store : ouvrir l'APK, autoriser les
 sources inconnues, puis accorder la permission Bluetooth (« Appareils à proximité » sur
@@ -64,7 +67,10 @@ lance le scan. Le boîtier apparaît en vert en tête de liste, les autres appar
 Un appui lance la connexion et ouvre le tableau de bord. En cas de perte de liaison,
 l'application revient à l'écran de sélection et relance la recherche. Un bouton
 **« Aperçu de l'écran »** permet aussi d'ouvrir le tableau de bord avec des données fictives,
-sans boîtier (écriture désactivée) — utile pour voir l'interface.
+sans boîtier (écriture désactivée) — utile pour voir l'interface. Le bouton **☾ / ☀** en haut
+à droite bascule entre le thème clair et le thème nuit ; le choix est mémorisé.
+
+<br clear="right">
 
 ## Utilisation normale
 

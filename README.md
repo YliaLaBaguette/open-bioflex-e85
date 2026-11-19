@@ -46,6 +46,7 @@ dur trouvé dans l'application.
 - Réglage du seuil, des enrichissements froid/chaud et de la consigne de démarrage
 - Chaque écriture vérifiée par l'écho du boîtier
 - Mode aperçu : le tableau de bord avec des données fictives, sans boîtier
+- Thème clair ou nuit (bouton ☾ / ☀ en haut à droite)
 
 **Application — avancé**
 - Journal complet exportable (trames hex/ASCII, écritures)

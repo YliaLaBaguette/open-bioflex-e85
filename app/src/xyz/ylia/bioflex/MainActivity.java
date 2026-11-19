@@ -134,13 +134,48 @@ public class MainActivity extends Activity {
     File logFile;
     final SimpleDateFormat ts = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
 
+    // --- Thème clair / nuit ----------------------------------------------
+    // Couleurs dépendantes du thème, fixées par loadTheme() avant de construire l'UI.
+    boolean night = false;
+    int cBg, cText, cDim, cCard;
+    void loadTheme() {
+        night = getSharedPreferences("prefs", MODE_PRIVATE).getBoolean("night", false);
+        if (night) {   // nuit
+            cBg = 0xFF121212; cText = 0xFFECECEC; cDim = 0xFF9AA0A6; cCard = 0xFF2A2A2A;
+        } else {       // clair
+            cBg = 0xFFFAFAFA; cText = 0xFF1F1F1F; cDim = 0xFF6B6B6B; cCard = 0xFFF0F0F0;
+        }
+    }
+    // Bascule le thème et reconstruit l'UI sans couper la liaison Bluetooth.
+    void toggleTheme() {
+        getSharedPreferences("prefs", MODE_PRIVATE).edit().putBoolean("night", !night).apply();
+        boolean wasDash = flipper != null && flipper.getDisplayedChild() == 1;
+        loadTheme();
+        buildUi();
+        if (wasDash || !lastSnapshot.isEmpty()) {
+            flipper.setDisplayedChild(1);
+            setWriteEnabled(connected);
+            if (!lastSnapshot.isEmpty()) updateLive(lastSnapshot);
+        } else {
+            startScan();
+        }
+    }
+
     // =====================================================================
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         // Garder l'écran allumé tant que l'appli est au premier plan (usage en roulant).
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        loadTheme();
+        buildUi();
+        initBle();
+    }
+
+    // Construit toute l'interface (rejouée à chaque changement de thème).
+    void buildUi() {
         flipper = new android.widget.ViewFlipper(this);
+        flipper.setBackgroundColor(cBg);
 
         // ===== Écran 1 : sélection du boîtier =====
         LinearLayout scanScreen = new LinearLayout(this);
@@ -151,7 +186,7 @@ public class MainActivity extends Activity {
         int pad = dp(14); selBody.setPadding(pad, pad, pad, pad);
         scanStatus = new TextView(this);
         scanStatus.setText("Recherche du boîtier…");
-        scanStatus.setTextColor(0xFF6B6B6B); scanStatus.setTextSize(13);
+        scanStatus.setTextColor(cDim); scanStatus.setTextSize(13);
         selBody.addView(scanStatus);
         rescanBtn = btn("Rescanner", v -> startScan());
         selBody.addView(rescanBtn);
@@ -159,7 +194,7 @@ public class MainActivity extends Activity {
         selBody.addView(demoBtn);
         TextView hint = new TextView(this);
         hint.setText("Les boîtiers Biomotors apparaissent en vert.");
-        hint.setTextColor(0xFF9A9A9A); hint.setTextSize(11);
+        hint.setTextColor(cDim); hint.setTextSize(11);
         hint.setPadding(0, dp(8), 0, dp(4));
         selBody.addView(hint);
         deviceBox = new LinearLayout(this);
@@ -179,7 +214,7 @@ public class MainActivity extends Activity {
 
         status = new TextView(this);
         status.setText("Connecté.");
-        status.setTextColor(0xFF6B6B6B); status.setTextSize(12);
+        status.setTextColor(cDim); status.setTextSize(12);
         body.addView(status);
 
         LinearLayout gauges = new LinearLayout(this);
@@ -194,11 +229,11 @@ public class MainActivity extends Activity {
 
         modeBadge = new TextView(this);
         modeBadge.setText("Mode : —");
-        modeBadge.setTextColor(0xFF2D5208); modeBadge.setTextSize(13);
+        modeBadge.setTextColor(cText); modeBadge.setTextSize(13);
         modeBadge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         modeBadge.setGravity(android.view.Gravity.CENTER);
         modeBadge.setPadding(dp(16), dp(6), dp(16), dp(6));
-        modeBadge.setBackground(rounded(0xFFF3F7EC, dp(14)));
+        modeBadge.setBackground(rounded(cCard, dp(14)));
         LinearLayout badgeWrap = new LinearLayout(this);
         badgeWrap.setGravity(android.view.Gravity.CENTER);
         badgeWrap.setPadding(0, dp(2), 0, dp(10));
@@ -231,14 +266,16 @@ public class MainActivity extends Activity {
         writeBox.setOrientation(LinearLayout.VERTICAL);
         TextView wHdr = new TextView(this);
         wHdr.setText("Écriture manuelle (moteur à l'arrêt) — lettre + valeur");
-        wHdr.setTextSize(11);
+        wHdr.setTextSize(11); wHdr.setTextColor(cDim);
         writeBox.addView(wHdr);
         LinearLayout manualRow = new LinearLayout(this);
         letterInput = new EditText(this);
+        letterInput.setTextColor(cText); letterInput.setHintTextColor(cDim);
         letterInput.setHint("Lettre");
         letterInput.setFilters(new android.text.InputFilter[]{ new android.text.InputFilter.AllCaps(), new android.text.InputFilter.LengthFilter(1) });
         letterInput.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
         valueInput = new EditText(this);
+        valueInput.setTextColor(cText); valueInput.setHintTextColor(cDim);
         valueInput.setHint("Valeur");
         valueInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         valueInput.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 2f));
@@ -256,7 +293,7 @@ public class MainActivity extends Activity {
 
         TextView fHdr = new TextView(this);
         fHdr.setText("Champs lus :");
-        fHdr.setTextSize(11);
+        fHdr.setTextSize(11); fHdr.setTextColor(cDim);
         advancedBox.addView(fHdr);
         fieldsBox = new LinearLayout(this);
         fieldsBox.setOrientation(LinearLayout.VERTICAL);
@@ -264,7 +301,7 @@ public class MainActivity extends Activity {
 
         output = new TextView(this);
         output.setTypeface(android.graphics.Typeface.MONOSPACE);
-        output.setTextSize(11);
+        output.setTextSize(11); output.setTextColor(cText);
         advancedBox.addView(output);
 
         body.addView(advancedBox);
@@ -280,7 +317,10 @@ public class MainActivity extends Activity {
         flipper.addView(scanScreen);
         flipper.addView(dashScreen);
         setContentView(flipper);
+    }
 
+    // Journal + initialisation Bluetooth : une seule fois (pas à chaque thème).
+    void initBle() {
         // Fichier journal dans Android/data/xyz.ylia.bioflex/files/ (accessible)
         try {
             logFile = new File(getExternalFilesDir(null),
@@ -311,7 +351,17 @@ public class MainActivity extends Activity {
         t.setTextColor(0xFFFFFFFF); t.setTextSize(18);
         t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         t.setPadding(dp(10), 0, 0, 0);
+        t.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f)); // pousse le bouton à droite
         h.addView(t);
+        // Bouton thème (haut à droite) : lune en clair, soleil en nuit.
+        TextView themeBtn = new TextView(this);
+        themeBtn.setText(night ? "☀" : "☾");
+        themeBtn.setTextColor(0xFFFFFFFF); themeBtn.setTextSize(20);
+        themeBtn.setGravity(android.view.Gravity.CENTER);
+        themeBtn.setPadding(dp(12), dp(2), dp(6), dp(2));
+        themeBtn.setContentDescription("Basculer le thème clair / nuit");
+        themeBtn.setOnClickListener(v -> toggleTheme());
+        h.addView(themeBtn);
         return h;
     }
     void disconnectAndScan() {
@@ -617,8 +667,8 @@ public class MainActivity extends Activity {
             modeBadge.setBackground(rounded(cold ? 0xFF378ADD : 0xFFE89A2B, dp(16)));
         } else {
             modeBadge.setText("Mode : —");
-            modeBadge.setTextColor(0xFF9A9A9A);
-            modeBadge.setBackground(rounded(0xFFF0F0F0, dp(16)));
+            modeBadge.setTextColor(cDim);
+            modeBadge.setBackground(rounded(cCard, dp(16)));
         }
 
         updateReglagesCurrent(f);
@@ -652,10 +702,10 @@ public class MainActivity extends Activity {
             lab = (kind == ETHANOL) ? "ÉTHANOL" : "TEMPÉRATURE";
             float d = getResources().getDisplayMetrics().density;
             pZone.setStyle(Paint.Style.STROKE); pZone.setStrokeWidth(17 * d); pZone.setStrokeCap(Paint.Cap.BUTT);
-            pNeedle.setColor(0xFF2B2B2B); pNeedle.setStrokeWidth(3.5f * d); pNeedle.setStrokeCap(Paint.Cap.ROUND);
-            pTick.setColor(0xFF1F1F1F); pTick.setStrokeWidth(2f * d);
-            pBig.setColor(0xFF1F1F1F); pBig.setTextAlign(Paint.Align.CENTER); pBig.setFakeBoldText(true); pBig.setTextSize(27 * d);
-            pLab.setColor(0xFF4A4A4A); pLab.setTextAlign(Paint.Align.CENTER); pLab.setFakeBoldText(true); pLab.setTextSize(12 * d);
+            pNeedle.setColor(cText); pNeedle.setStrokeWidth(3.5f * d); pNeedle.setStrokeCap(Paint.Cap.ROUND);
+            pTick.setColor(cText); pTick.setStrokeWidth(2f * d);
+            pBig.setColor(cText); pBig.setTextAlign(Paint.Align.CENTER); pBig.setFakeBoldText(true); pBig.setTextSize(27 * d);
+            pLab.setColor(cDim); pLab.setTextAlign(Paint.Align.CENTER); pLab.setFakeBoldText(true); pLab.setTextSize(12 * d);
             pZl.setColor(0xFFFFFFFF); pZl.setTextAlign(Paint.Align.CENTER); pZl.setFakeBoldText(true); pZl.setTextSize(9.5f * d);
             pSeuil.setColor(0xFF185FA5); pSeuil.setTextAlign(Paint.Align.CENTER); pSeuil.setFakeBoldText(true); pSeuil.setTextSize(9f * d);
         }
@@ -717,7 +767,7 @@ public class MainActivity extends Activity {
         reglagesBox.setOrientation(LinearLayout.VERTICAL);
         TextView hdr = new TextView(this);
         hdr.setText("\nRÉGLAGES (moteur à l'arrêt) — ± par appui, puis Appliquer");
-        hdr.setTextSize(12);
+        hdr.setTextSize(12); hdr.setTextColor(cDim);
         reglagesBox.addView(hdr);
         for (String[] s : SETTINGS) {
             final String letter = s[0];
@@ -731,7 +781,7 @@ public class MainActivity extends Activity {
             LinearLayout labRow = new LinearLayout(this);
             labRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
             labRow.setLayoutParams(new LinearLayout.LayoutParams(-1, -2)); // pleine largeur de la colonne
-            TextView lab = new TextView(this); lab.setText(s[1]); lab.setTextSize(14);
+            TextView lab = new TextView(this); lab.setText(s[1]); lab.setTextSize(14); lab.setTextColor(cText);
             // poids 1 : le libellé prend la place restante et laisse le "?" visible à sa droite
             lab.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
             labRow.addView(lab);
@@ -752,12 +802,12 @@ public class MainActivity extends Activity {
                 labRow.addView(q);
             }
             TextView cur = new TextView(this); cur.setText("actuel : —"); cur.setTextSize(11);
-            cur.setTextColor(0xFF9A9A9A);
+            cur.setTextColor(cDim);
             col.addView(labRow); col.addView(cur);
             currentView.put(letter, cur);
             rowL.addView(col);
             Button minus = btn("−", v -> stepStaged(letter, -1)); minus.setTextSize(18);
-            TextView val = new TextView(this); val.setText("—"); val.setTextSize(18);
+            TextView val = new TextView(this); val.setText("—"); val.setTextSize(18); val.setTextColor(cText);
             val.setGravity(android.view.Gravity.CENTER); val.setMinWidth(dp(60));
             stagedView.put(letter, val);
             Button plus = btn("+", v -> stepStaged(letter, +1)); plus.setTextSize(18);
@@ -813,7 +863,7 @@ public class MainActivity extends Activity {
         if (v == null || st == null) return;
         v.setText(String.valueOf(st));
         Integer snap = snapInt(letter);
-        v.setTextColor(snap != null && !snap.equals(st) ? 0xFF4E7A16 : 0xFF2B2B2B);
+        v.setTextColor(snap != null && !snap.equals(st) ? 0xFF6FBF2F : cText);
     }
     void updateReglagesCurrent(Map<String,String> f) {
         // Relecture après « Appliquer » : on repart de l'état réel du boîtier (évite de

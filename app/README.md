@@ -14,6 +14,8 @@ fois par seconde et écrit les réglages. Le mode d'emploi est dans le
   consigne de démarrage. *Appliquer* affiche un récapitulatif *ancienne → nouvelle*, écrit
   champ par champ, puis compare l'écho du boîtier à la commande envoyée.
 - **Mode aperçu** : tableau de bord avec des données fictives, sans connexion.
+- **Thème clair / nuit** : bouton ☾ / ☀ dans l'en-tête ; choix mémorisé (`SharedPreferences`),
+  l'UI est reconstruite sans couper la liaison Bluetooth (`loadTheme()` + `buildUi()`).
 - **Avancé** : journal complet (scan, événements GATT, notifications hex + ASCII, trame,
   décodage) exportable dans *Téléchargements*, écriture d'une commande brute, réécriture
   d'un champ à l'identique, *Restaurer* (valeurs d'origine de la session).
